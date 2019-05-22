@@ -45,7 +45,6 @@ import org.apache.flink.shaded.curator.org.apache.curator.shaded.com.google.comm
 import com.king.bravo.reader.inputformat.RocksDBKeyedStateInputFormat;
 import com.king.bravo.types.KeyedStateRow;
 import com.king.bravo.utils.StateMetadataUtils;
-import com.king.bravo.writer.OperatorStateWriter;
 
 /**
  * Utility for reading the states stored in a Flink operator into DataSets.
@@ -108,7 +107,7 @@ public class OperatorStateReader {
 	}
 
 	private TypeSerializer<?> getKeySerializer(KeyedBackendSerializationProxy<?> proxy) {
-		TypeSerializer<?> keySerializer = proxy.getKeySerializerConfigSnapshot().restoreSerializer();
+		TypeSerializer<?> keySerializer = proxy.getKeySerializer();
 		if (keySerializer instanceof TupleSerializerBase) {
 			TupleSerializerBase ts = (TupleSerializerBase) keySerializer;
 			if (ts.getTupleClass().equals(Tuple1.class)) {
@@ -131,7 +130,6 @@ public class OperatorStateReader {
 	 * Return all the keyed state rows that were not accessed using a reader.
 	 * This is a convenience method so we can union the untouched part of the
 	 * state with the changed parts before writing them back using the
-	 * {@link OperatorStateWriter}.
 	 */
 	public DataSet<KeyedStateRow> getAllUnreadKeyedStateRows() {
 		readKeyedStates();

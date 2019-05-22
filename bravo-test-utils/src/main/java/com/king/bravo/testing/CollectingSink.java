@@ -20,10 +20,10 @@ package com.king.bravo.testing;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
-import com.google.common.collect.Lists;
 
 public class CollectingSink implements SinkFunction<String>, ListCheckpointed<Integer> {
 	private static final long serialVersionUID = 1L;
@@ -33,9 +33,10 @@ public class CollectingSink implements SinkFunction<String>, ListCheckpointed<In
 	public CollectingSink() {}
 
 	@Override
-	public void invoke(String out) throws Exception {
-		OUTPUT.add(out);
+	public void invoke(String value, Context context) throws Exception {
+		OUTPUT.add(value);
 	}
+
 
 	@Override
 	public List<Integer> snapshotState(long checkpointId, long timestamp) throws Exception {

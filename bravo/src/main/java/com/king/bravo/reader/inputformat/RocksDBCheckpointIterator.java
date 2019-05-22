@@ -40,10 +40,10 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.IncrementalKeyedStateHandle;
 import org.apache.flink.runtime.state.StateHandleID;
 import org.apache.flink.runtime.state.StreamStateHandle;
-import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.runtime.state.RegisteredKeyedBackendStateMetaInfo.Snapshot;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
@@ -74,7 +74,7 @@ public class RocksDBCheckpointIterator implements Iterator<KeyedStateRow>, Close
 			String localPath) {
 		this.localPath = localPath;
 		this.cancelStreamRegistry = new CloseableRegistry();
-		List<StateMetaInfoSnapshot> stateMetaInfoSnapshots = StateMetadataUtils
+		List<Snapshot<?,?>> stateMetaInfoSnapshots = StateMetadataUtils
 				.getKeyedBackendSerializationProxy(handle.getMetaStateHandle()).getStateMetaInfoSnapshots();
 
 		stateColumnFamilyHandles = new ArrayList<>(stateMetaInfoSnapshots.size() + 1);
@@ -148,7 +148,7 @@ public class RocksDBCheckpointIterator implements Iterator<KeyedStateRow>, Close
 	}
 
 	private void createColumnIterators(FilterFunction<String> stateFilter,
-			List<StateMetaInfoSnapshot> stateMetaInfoSnapshots)
+			List<Snapshot<?,?>> stateMetaInfoSnapshots)
 			throws Exception {
 		Map<String, RocksIteratorWrapper> iterators = new HashMap<>();
 		for (int i = 0; i < stateMetaInfoSnapshots.size(); i++) {
@@ -179,11 +179,11 @@ public class RocksDBCheckpointIterator implements Iterator<KeyedStateRow>, Close
 	}
 
 	private List<ColumnFamilyDescriptor> createAndRegisterColumnFamilyDescriptors(
-			List<StateMetaInfoSnapshot> stateMetaInfoSnapshots) {
+			List<Snapshot<?,?>> stateMetaInfoSnapshots) {
 
 		List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>(stateMetaInfoSnapshots.size());
 
-		for (StateMetaInfoSnapshot stateMetaInfoSnapshot : stateMetaInfoSnapshots) {
+		for (Snapshot stateMetaInfoSnapshot : stateMetaInfoSnapshots) {
 			ColumnFamilyDescriptor columnFamilyDescriptor = new ColumnFamilyDescriptor(
 					stateMetaInfoSnapshot.getName().getBytes(ConfigConstants.DEFAULT_CHARSET),
 					colOptions);

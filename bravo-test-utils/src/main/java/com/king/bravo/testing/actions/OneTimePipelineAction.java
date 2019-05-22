@@ -28,6 +28,7 @@ public abstract class OneTimePipelineAction implements PipelineAction {
 	private boolean checkpointLockTriggered = false;
 	private boolean clusterActionTriggered = false;
 
+	@Override
 	public final void withCheckpointLock(SourceContext<String> ctx) {
 		if (checkpointLockTriggered) {
 			return;
@@ -39,6 +40,7 @@ public abstract class OneTimePipelineAction implements PipelineAction {
 
 	protected void onceWithCheckpointLock(SourceContext<String> ctx) {}
 
+	@Override
 	public final void executeClusterAction(ClusterClient<?> client, JobID id) throws Exception {
 
 		if (clusterActionTriggered) {

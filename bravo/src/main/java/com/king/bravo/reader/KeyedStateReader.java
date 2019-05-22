@@ -100,8 +100,8 @@ public abstract class KeyedStateReader<K, V, O> extends RichFlatMapFunction<Keye
 		}
 
 		if (this.valueDeserializer == null && this.valueDeserializerType == null) {
-			this.valueDeserializer = ttlSerializer ? StateMetadataUtils.unwrapTtlSerializer(valueSerializer)
-					: (TypeSerializer<V>) valueSerializer;
+			// ttl is valida from flink 1.6.0
+			this.valueDeserializer = (TypeSerializer<V>) valueSerializer;
 		}
 		initialized = true;
 	}

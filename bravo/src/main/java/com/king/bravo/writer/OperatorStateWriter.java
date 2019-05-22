@@ -29,7 +29,6 @@ import java.util.function.BiConsumer;
 import org.apache.flink.api.common.operators.Order;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.Path;
@@ -39,17 +38,9 @@ import org.apache.flink.runtime.checkpoint.OperatorState;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.checkpoint.savepoint.Savepoint;
-import org.apache.flink.runtime.state.CheckpointStreamFactory;
-import org.apache.flink.runtime.state.CheckpointedStateScope;
-import org.apache.flink.runtime.state.KeyedBackendSerializationProxy;
-import org.apache.flink.runtime.state.KeyedStateHandle;
-import org.apache.flink.runtime.state.OperatorStateBackend;
-import org.apache.flink.runtime.state.OperatorStateHandle;
-import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
-import org.apache.flink.runtime.state.VoidNamespaceSerializer;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.state.filesystem.FileBasedStateOutputStream;
-import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
-import org.apache.flink.shaded.guava18.com.google.common.collect.Maps;
+import org.apache.flink.runtime.state.RegisteredKeyedBackendStateMetaInfo.Snapshot;
 
 import com.google.common.collect.HashBiMap;
 import com.google.common.collect.Lists;
@@ -74,7 +65,7 @@ public class OperatorStateWriter {
 	private Path newCheckpointBasePath;
 	private long checkpointId;
 	private BiConsumer<Integer, OperatorStateBackend> transformer;
-	private Map<String, StateMetaInfoSnapshot> metaSnapshots;
+	private Map<String, Snapshot> metaSnapshots;
 	private KeyedBackendSerializationProxy<?> proxy;
 
 	private boolean keepBaseKeyedStates = true;
@@ -94,11 +85,7 @@ public class OperatorStateWriter {
 		metaSnapshots = new HashMap<>();
 		if (proxy != null) {
 			proxy.getStateMetaInfoSnapshots()
-					.forEach(ms -> metaSnapshots.put(ms.getName(),
-							new StateMetaInfoSnapshot(ms.getName(), ms.getBackendStateType(), ms.getOptionsImmutable(),
-									ms.getSerializerSnapshotsImmutable(),
-									Maps.transformValues(ms.getSerializerSnapshotsImmutable(),
-											TypeSerializerSnapshot::restoreSerializer))));
+					.forEach(ms -> metaSnapshots.put(ms.getName(), ms));
 		}
 	}
 
@@ -106,7 +93,7 @@ public class OperatorStateWriter {
 	 * Defines the keyserializer for this operator. This method can be used when
 	 * adding state to a previously stateless operator where the keyserializer
 	 * is not available from the state.
-	 * 
+	 *
 	 * @param keySerializer
 	 */
 	public void setKeySerializer(TypeSerializer<?> keySerializer) {
@@ -120,7 +107,7 @@ public class OperatorStateWriter {
 	 * <p>
 	 * This can be used to add all different kinds of keyed states: value, list,
 	 * map
-	 * 
+	 *
 	 * @param rows
 	 *            State rows to be added
 	 */
@@ -131,7 +118,7 @@ public class OperatorStateWriter {
 
 	/**
 	 * Removes the state metadata and rows for the given statename.
-	 * 
+	 *
 	 * @param stateName
 	 *            Name of the state to be deleted
 	 */
@@ -146,7 +133,7 @@ public class OperatorStateWriter {
 					"KeySerializer must be defined when adding state to a previously stateless operator. Use writer.setKeySerializer(...)");
 		}
 
-		proxy = new KeyedBackendSerializationProxy<>(
+		proxy = new KeyedBackendSerializationProxy(
 				getKeySerializer(),
 				new ArrayList<>(metaSnapshots.values()),
 				proxy != null ? proxy.isUsingKeyGroupCompression() : true);
@@ -154,7 +141,7 @@ public class OperatorStateWriter {
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private <T> TypeSerializer<T> getKeySerializer() {
-		return proxy != null ? (TypeSerializer) proxy.getKeySerializerConfigSnapshot().restoreSerializer()
+		return proxy != null ? (TypeSerializer) proxy.getKeySerializer()
 				: (TypeSerializer) keySerializer;
 	}
 
@@ -168,7 +155,7 @@ public class OperatorStateWriter {
 	 * <p>
 	 * Keep in mind that any state rows for the same name already added (through
 	 * {@link #addKeyedStateRows(DataSet)}) will not be overwritten.
-	 * 
+	 *
 	 * @param stateName
 	 * @param newState
 	 */
@@ -196,7 +183,7 @@ public class OperatorStateWriter {
 	 * <p>
 	 * When redefining a pre-existing state make sure you haven't added that as
 	 * keyed state rows before.
-	 * 
+	 *
 	 * @param stateName
 	 * @param newState
 	 * @param valueSerializer
@@ -204,7 +191,7 @@ public class OperatorStateWriter {
 	public <K, V> void createNewValueState(String stateName, DataSet<Tuple2<K, V>> newState,
 			TypeSerializer<V> valueSerializer) {
 
-		metaSnapshots.put(stateName, new RegisteredKeyValueStateBackendMetaInfo<>(StateDescriptor.Type.VALUE, stateName,
+		metaSnapshots.put(stateName, new RegisteredKeyedBackendStateMetaInfo<>(StateDescriptor.Type.VALUE, stateName,
 				VoidNamespaceSerializer.INSTANCE, valueSerializer).snapshot());
 
 		updateProxy();
@@ -218,7 +205,7 @@ public class OperatorStateWriter {
 	/**
 	 * Triggers the batch processing operations to write the operator state data
 	 * to persistent storage and create the metadata object
-	 * 
+	 *
 	 * @return {@link OperatorState} metadata pointing to the newly written
 	 *         state
 	 */
@@ -298,9 +285,8 @@ public class OperatorStateWriter {
 			OperatorStateHandle newSnapshot = opBackend
 					.snapshot(checkpointId, System.currentTimeMillis(), new CheckpointStreamFactory() {
 						@Override
-						public CheckpointStateOutputStream createCheckpointStateOutputStream(
-								CheckpointedStateScope scope)
-								throws IOException {
+						public CheckpointStateOutputStream
+						createCheckpointStateOutputStream(long checkpointId, CheckpointedStateScope scope) throws IOException {
 							return new FileBasedStateOutputStream(outDir.getFileSystem(),
 									new Path(outDir, String.valueOf(UUID.randomUUID())));
 						}
@@ -319,7 +305,7 @@ public class OperatorStateWriter {
 	 * <p>
 	 * The transformation will be executed sequentially, in-memory on the
 	 * client.
-	 * 
+	 *
 	 * @param transformer
 	 *            Consumer to be applied on the {@link OperatorStateBackend}
 	 * @throws Exception
